@@ -57,6 +57,11 @@
     let bluetoothDevice;
     let configCharacteristic;
 
+    // Standard lowercase 128-bit formatted UUIDs
+    const SERVICE_UUID_128 = '00001234-0000-1000-8000-00805f9b34fb';
+    const CHAR_UUID_128    = '00005678-0000-1000-8000-00805f9b34fb';
+    const MIDI_SERVICE     = '03b80e5a-0000-1000-8000-00805f9b34fb';
+
     function log(msg) {
       const logger = document.getElementById('debugLog');
       logger.innerHTML += '<br>' + msg;
@@ -93,54 +98,36 @@
 
     document.getElementById('connectBtn').addEventListener('click', async () => {
       try {
-        log('Requesting Bluetooth Device...');
+        log('Requesting device permission...');
         bluetoothDevice = await navigator.bluetooth.requestDevice({
           filters: [{ name: 'Sarracuda' }],
           optionalServices: [
-            0x1234,
-            '00001234-0000-1000-8000-00805f9b34fb',
-            '03b80e5a-0000-1000-8000-00805f9b34fb',
-            '00001530-1212-efde-1523-785feabcd123', // Default Adafruit Custom Base
-            '6e400001-b5a3-f393-e0a9-e50e24dcca9e'  // Nordic UART Service Base
+            SERVICE_UUID_128,
+            MIDI_SERVICE,
+            '0000180a-0000-1000-8000-00805f9b34fb', // Device Info
+            '0000180f-0000-1000-8000-00805f9b34fb'  // Battery Service
           ]
         });
 
-        log('Connecting to GATT Server...');
+        log('Connecting GATT...');
         const server = await bluetoothDevice.gatt.connect();
 
-        log('Fetching Primary Services...');
-        const services = await server.getPrimaryServices();
-
-        let targetService = null;
-        for (const s of services) {
-          log('Discovered Service: ' + s.uuid);
-          // Skip BLE MIDI service, pick custom service
-          if (!s.uuid.includes('03b80e5a')) {
-            targetService = s;
-          }
+        log('Targeting Custom Service...');
+        let service;
+        try {
+          service = await server.getPrimaryService(SERVICE_UUID_128);
+        } catch (e) {
+          log('0x1234 direct failed, trying MIDI fallback...');
+          service = await server.getPrimaryService(MIDI_SERVICE);
         }
 
-        if (!targetService) {
-          targetService = services[0];
-        }
-
-        log('Using Service: ' + targetService.uuid);
-        log('Fetching Characteristics...');
-        const characteristics = await targetService.getCharacteristics();
-
-        for (const c of characteristics) {
-          log('Discovered Characteristic: ' + c.uuid);
-          configCharacteristic = c;
-        }
-
-        if (!configCharacteristic) {
-          throw new Error('No writable characteristics found!');
-        }
+        log('Targeting Characteristic...');
+        configCharacteristic = await service.getCharacteristic(CHAR_UUID_128);
 
         document.getElementById('connectBtn').style.background = '#00b0ff';
         document.getElementById('connectBtn').innerText = 'Syncing...';
 
-        log('Syncing config from hardware memory...');
+        log('Syncing data...');
         await syncSettingsFromDevice();
 
         document.getElementById('connectBtn').innerText = 'Connected & Synced!';
