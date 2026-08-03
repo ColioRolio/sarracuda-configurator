@@ -54,18 +54,19 @@
     let bluetoothDevice;
     let configCharacteristic;
 
-    // Standard 128-bit representation of 0x1234 & 0x5678 Bluefruit UUIDs
-    const CUSTOM_SERVICE_UUID = '00001234-0000-1000-8000-00805f9b34fb';
-    const CUSTOM_CHAR_UUID    = '00005678-0000-1000-8000-00805f9b34fb';
+    // Both 16-bit and 128-bit fallback formats for 0x1234 & 0x5678
+    const SERVICE_UUID_16  = 0x1234;
+    const SERVICE_UUID_128 = '00001234-0000-1000-8000-00805f9b34fb';
+    
+    const CHAR_UUID_16     = 0x5678;
+    const CHAR_UUID_128    = '00005678-0000-1000-8000-00805f9b34fb';
 
     const gridContainer = document.getElementById('matrixGrid');
 
-    // Helper: Convert R, G, B numbers to #RRGGBB hex string
     function rgbToHex(r, g, b) {
       return "#" + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
     }
 
-    // Build 3x5 pad grid
     for (let i = 0; i < 15; i++) {
       const card = document.createElement('div');
       card.className = 'card';
@@ -90,19 +91,32 @@
 
     document.getElementById('connectBtn').addEventListener('click', async () => {
       try {
+        // Request device by name rather than service UUID filter
         bluetoothDevice = await navigator.bluetooth.requestDevice({
           filters: [{ name: 'Sarracuda' }],
-          optionalServices: [CUSTOM_SERVICE_UUID]
+          optionalServices: [SERVICE_UUID_16, SERVICE_UUID_128, '0000180e-0000-1000-8000-00805f9b34fb']
         });
 
         const server = await bluetoothDevice.gatt.connect();
-        const service = await server.getPrimaryService(CUSTOM_SERVICE_UUID);
-        configCharacteristic = await service.getCharacteristic(CUSTOM_CHAR_UUID);
+
+        // Attempt to resolve service via 16-bit first, fallback to 128-bit
+        let service;
+        try {
+          service = await server.getPrimaryService(SERVICE_UUID_16);
+        } catch (e) {
+          service = await server.getPrimaryService(SERVICE_UUID_128);
+        }
+
+        // Attempt to resolve characteristic via 16-bit first, fallback to 128-bit
+        try {
+          configCharacteristic = await service.getCharacteristic(CHAR_UUID_16);
+        } catch (e) {
+          configCharacteristic = await service.getCharacteristic(CHAR_UUID_128);
+        }
 
         document.getElementById('connectBtn').style.background = '#00b0ff';
         document.getElementById('connectBtn').innerText = 'Syncing...';
 
-        // Perform auto-sync from board's Flash memory
         await syncSettingsFromDevice();
 
         document.getElementById('connectBtn').innerText = 'Connected & Synced!';
@@ -120,21 +134,17 @@
       const DataView = await configCharacteristic.readValue();
       let offset = 0;
 
-      // 1. Skip Magic Bytes (uint32_t = 4 bytes)
-      offset += 4;
+      offset += 4; // Skip magic bytes
 
-      // 2. Read Note Map (15 bytes)
       for (let i = 0; i < 15; i++) {
         const note = DataView.getUint8(offset++);
         document.getElementById(`note-${i}`).value = note;
       }
 
-      // 3. Read Base Mode (1 byte)
       const ledMode = DataView.getUint8(offset++);
       if (ledMode === 0) document.getElementById('baseMode0').checked = true;
       else document.getElementById('baseMode1').checked = true;
 
-      // 4. Read Sub-Options (2 bytes)
       const rainbowSubOption = DataView.getUint8(offset++) === 1;
       const colorByNoteSubOption = DataView.getUint8(offset++) === 1;
 
@@ -146,13 +156,11 @@
         document.getElementById('subStyleNone').checked = true;
       }
 
-      // 5. Read Brightness (1 byte)
       const brightness = DataView.getUint8(offset++);
       document.getElementById('brightnessSlider').value = brightness;
       const pct = Math.round((brightness / 255) * 100);
       document.getElementById('brightnessVal').innerText = `${pct}%`;
 
-      // 6. Read Idle Colors (15 x 3 bytes)
       for (let i = 0; i < 15; i++) {
         const r = DataView.getUint8(offset++);
         const g = DataView.getUint8(offset++);
@@ -160,7 +168,6 @@
         document.getElementById(`idle-${i}`).value = rgbToHex(r, g, b);
       }
 
-      // 7. Read Active Colors (15 x 3 bytes)
       for (let i = 0; i < 15; i++) {
         const r = DataView.getUint8(offset++);
         const g = DataView.getUint8(offset++);
