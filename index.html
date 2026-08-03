@@ -20,6 +20,7 @@
     input[type="number"] { width: 50px; text-align: center; }
     input[type="color"] { border: none; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; background: none; }
     .color-group { display: flex; justify-content: space-around; align-items: center; margin-top: 5px; }
+    #debugLog { background: #000; color: #00ff00; font-family: monospace; font-size: 11px; text-align: left; padding: 10px; margin-top: 20px; border-radius: 5px; max-height: 150px; overflow-y: auto; }
   </style>
 </head>
 <body>
@@ -50,24 +51,17 @@
 
   <div class="grid" id="matrixGrid"></div>
 
+  <div id="debugLog">System Ready. Tap Connect...</div>
+
   <script>
     let bluetoothDevice;
     let configCharacteristic;
 
-    // List of candidate service UUID formats used by Nordic/Adafruit BLE stacks for 0x1234
-    const CANDIDATE_SERVICES = [
-      0x1234,
-      '00001234-0000-1000-8000-00805f9b34fb',
-      '00001234-0000-1000-8000-00805f9b34fb'.toLowerCase(),
-      '34120000-0000-1000-8000-00805f9b34fb',
-      '03b80e5a-0000-1000-8000-00805f9b34fb'
-    ];
-
-    const CANDIDATE_CHARS = [
-      0x5678,
-      '00005678-0000-1000-8000-00805f9b34fb',
-      '78560000-0000-1000-8000-00805f9b34fb'
-    ];
+    function log(msg) {
+      const logger = document.getElementById('debugLog');
+      logger.innerHTML += '<br>' + msg;
+      logger.scrollTop = logger.scrollHeight;
+    }
 
     const gridContainer = document.getElementById('matrixGrid');
 
@@ -99,48 +93,61 @@
 
     document.getElementById('connectBtn').addEventListener('click', async () => {
       try {
+        log('Requesting Bluetooth Device...');
         bluetoothDevice = await navigator.bluetooth.requestDevice({
           filters: [{ name: 'Sarracuda' }],
-          optionalServices: CANDIDATE_SERVICES
+          optionalServices: [
+            0x1234,
+            '00001234-0000-1000-8000-00805f9b34fb',
+            '03b80e5a-0000-1000-8000-00805f9b34fb',
+            '00001530-1212-efde-1523-785feabcd123', // Default Adafruit Custom Base
+            '6e400001-b5a3-f393-e0a9-e50e24dcca9e'  // Nordic UART Service Base
+          ]
         });
 
+        log('Connecting to GATT Server...');
         const server = await bluetoothDevice.gatt.connect();
 
-        let service = null;
-        for (const candidateService of CANDIDATE_SERVICES) {
-          try {
-            service = await server.getPrimaryService(candidateService);
-            if (service) break;
-          } catch (e) {
-            // Check next candidate UUID
+        log('Fetching Primary Services...');
+        const services = await server.getPrimaryServices();
+
+        let targetService = null;
+        for (const s of services) {
+          log('Discovered Service: ' + s.uuid);
+          // Skip BLE MIDI service, pick custom service
+          if (!s.uuid.includes('03b80e5a')) {
+            targetService = s;
           }
         }
 
-        if (!service) {
-          throw new Error('Custom config service not matched in GATT table.');
+        if (!targetService) {
+          targetService = services[0];
         }
 
-        for (const candidateChar of CANDIDATE_CHARS) {
-          try {
-            configCharacteristic = await service.getCharacteristic(candidateChar);
-            if (configCharacteristic) break;
-          } catch (e) {
-            // Check next candidate UUID
-          }
+        log('Using Service: ' + targetService.uuid);
+        log('Fetching Characteristics...');
+        const characteristics = await targetService.getCharacteristics();
+
+        for (const c of characteristics) {
+          log('Discovered Characteristic: ' + c.uuid);
+          configCharacteristic = c;
         }
 
         if (!configCharacteristic) {
-          throw new Error('Config characteristic not matched in GATT table.');
+          throw new Error('No writable characteristics found!');
         }
 
         document.getElementById('connectBtn').style.background = '#00b0ff';
         document.getElementById('connectBtn').innerText = 'Syncing...';
 
+        log('Syncing config from hardware memory...');
         await syncSettingsFromDevice();
 
         document.getElementById('connectBtn').innerText = 'Connected & Synced!';
+        log('Sync complete!');
       } catch (error) {
         console.error(error);
+        log('ERROR: ' + error.message);
         alert('Connection failed: ' + error.message);
         document.getElementById('connectBtn').style.background = '#00e676';
         document.getElementById('connectBtn').innerText = 'Connect via Bluetooth';
