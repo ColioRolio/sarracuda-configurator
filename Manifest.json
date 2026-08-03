@@ -1,7 +1,9 @@
 {
+  "id": "/sarracuda-configurator/",
   "name": "Sarracuda Studio",
   "short_name": "Sarracuda",
   "start_url": "./sarracuda.html",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#121212",
   "theme_color": "#121212",
@@ -9,7 +11,8 @@
     {
       "src": "https://via.placeholder.com/512",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
