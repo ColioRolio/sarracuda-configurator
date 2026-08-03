@@ -54,6 +54,21 @@
     let bluetoothDevice;
     let configCharacteristic;
 
+    // List of candidate service UUID formats used by Nordic/Adafruit BLE stacks for 0x1234
+    const CANDIDATE_SERVICES = [
+      0x1234,
+      '00001234-0000-1000-8000-00805f9b34fb',
+      '00001234-0000-1000-8000-00805f9b34fb'.toLowerCase(),
+      '34120000-0000-1000-8000-00805f9b34fb',
+      '03b80e5a-0000-1000-8000-00805f9b34fb'
+    ];
+
+    const CANDIDATE_CHARS = [
+      0x5678,
+      '00005678-0000-1000-8000-00805f9b34fb',
+      '78560000-0000-1000-8000-00805f9b34fb'
+    ];
+
     const gridContainer = document.getElementById('matrixGrid');
 
     function rgbToHex(r, g, b) {
@@ -84,40 +99,39 @@
 
     document.getElementById('connectBtn').addEventListener('click', async () => {
       try {
-        // Request access to ALL devices without asking for specific service UUID filters
         bluetoothDevice = await navigator.bluetooth.requestDevice({
-          acceptAllDevices: true,
-          optionalServices: [
-            '00001234-0000-1000-8000-00805f9b34fb',
-            '03b80e5a-0000-1000-8000-00805f9b34fb',
-            0x1234
-          ]
+          filters: [{ name: 'Sarracuda' }],
+          optionalServices: CANDIDATE_SERVICES
         });
 
         const server = await bluetoothDevice.gatt.connect();
 
-        // Get all available GATT services on the device directly
-        const services = await server.getPrimaryServices();
-        let targetService = null;
-
-        // Loop through all services found on the board
-        for (const service of services) {
-          console.log('Found Service UUID:', service.uuid);
-          // Ignore standard BLE MIDI (03b80e5a...) and find our custom config service
-          if (!service.uuid.includes('03b80e5a')) {
-            targetService = service;
-            break;
+        let service = null;
+        for (const candidateService of CANDIDATE_SERVICES) {
+          try {
+            service = await server.getPrimaryService(candidateService);
+            if (service) break;
+          } catch (e) {
+            // Check next candidate UUID
           }
         }
 
-        if (!targetService) {
-          // Fallback to first available service if custom check fails
-          targetService = services[0];
+        if (!service) {
+          throw new Error('Custom config service not matched in GATT table.');
         }
 
-        // Get all characteristics from the matched service
-        const characteristics = await targetService.getCharacteristics();
-        configCharacteristic = characteristics[0];
+        for (const candidateChar of CANDIDATE_CHARS) {
+          try {
+            configCharacteristic = await service.getCharacteristic(candidateChar);
+            if (configCharacteristic) break;
+          } catch (e) {
+            // Check next candidate UUID
+          }
+        }
+
+        if (!configCharacteristic) {
+          throw new Error('Config characteristic not matched in GATT table.');
+        }
 
         document.getElementById('connectBtn').style.background = '#00b0ff';
         document.getElementById('connectBtn').innerText = 'Syncing...';
