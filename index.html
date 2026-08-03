@@ -54,8 +54,9 @@
     let bluetoothDevice;
     let configCharacteristic;
 
-    const CUSTOM_SERVICE_UUID = 0x1234;
-    const CUSTOM_CHAR_UUID    = 0x5678;
+    // Standard 128-bit representation of 0x1234 & 0x5678 Bluefruit UUIDs
+    const CUSTOM_SERVICE_UUID = '00001234-0000-1000-8000-00805f9b34fb';
+    const CUSTOM_CHAR_UUID    = '00005678-0000-1000-8000-00805f9b34fb';
 
     const gridContainer = document.getElementById('matrixGrid');
 
