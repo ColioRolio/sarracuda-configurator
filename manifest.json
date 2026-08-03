@@ -2,7 +2,7 @@
   "id": "/sarracuda-configurator/",
   "name": "Sarracuda Studio",
   "short_name": "Sarracuda",
-  "start_url": "./sarracuda.html",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#121212",
